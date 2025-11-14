@@ -18,6 +18,37 @@
     #freqChart {
       filter: saturate(1.1) brightness(1.05);
     }
+    
+    /* Hacer editable el header */
+    .editable-header {
+      cursor: pointer;
+      position: relative;
+      padding: 8px 12px;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+    
+    .editable-header:hover {
+      background: rgba(6, 182, 212, 0.1);
+      color: #06B6D4;
+    }
+    
+    .header-input {
+      background: transparent;
+      border: 2px solid #06B6D4;
+      color: inherit;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 12px;
+      width: 140px;
+      font-family: inherit;
+    }
+    
+    .header-input:focus {
+      outline: none;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -46,7 +77,7 @@
             <thead>
               <tr>
                 <th style="width:1%"></th>
-                <th>Rango de edad</th>
+                <th id="rangeHeader" class="editable-header">Rango de edad</th>
                 <th style="width:140px">Frecuencia</th>
                 <th style="width:120px">Acciones</th>
               </tr>
@@ -142,6 +173,7 @@
     const clearBtn = document.getElementById('clearBtn');
     const sampleBtn = document.getElementById('sampleBtn');
     const msg = document.getElementById('msg');
+    const rangeHeader = document.getElementById('rangeHeader');
 
     const chartBarBtn = document.getElementById('chartBarBtn');
     const chartPieBtn = document.getElementById('chartPieBtn');
@@ -162,6 +194,37 @@
       '#7c3aed', '#a855f7', '#d946ef', '#ec4899', '#f43f5e',
       '#f97316', '#ca8a04', '#84cc16', '#15803d', '#059669'
     ];
+
+    // Hacer editable el encabezado de Rango
+    rangeHeader.addEventListener('click', () => {
+      const currentText = rangeHeader.innerText;
+      
+      const input = el('input', {
+        className: 'header-input',
+        type: 'text',
+        value: currentText
+      });
+
+      rangeHeader.innerHTML = '';
+      rangeHeader.appendChild(input);
+      input.focus();
+      input.select();
+
+      function saveHeader() {
+        const newText = input.value.trim() || 'Rango de edad';
+        rangeHeader.innerText = newText;
+        rangeHeader.classList.add('editable-header');
+      }
+
+      input.addEventListener('blur', saveHeader);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveHeader();
+        if (e.key === 'Escape') {
+          rangeHeader.innerText = currentText;
+          rangeHeader.classList.add('editable-header');
+        }
+      });
+    });
 
     function createChart(labels, data, chartType = 'bar'){
       const ctx = document.getElementById('freqChart').getContext('2d');
