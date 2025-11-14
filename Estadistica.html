@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sistema de estadística (datos agrupados)</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
+  <!-- jsPDF y html2canvas para PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    /* Estilos adicionales para gráficos */
+    #freqChart {
+      filter: saturate(1.1) brightness(1.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+  <header style="align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+  <div>
+    <h1>SISTEMA ESTADISTICO</h1>
+    <p>Ingresa rangos de edad y su frecuencia. Calcula media, mediana, moda, rango, desviaciones y grafica.</p>
+  </div>
+  <img src="logoitca.png" alt="Logo" id="logo"
+       style="max-width:280px;height:auto;border-radius:14px;object-fit:contain;box-shadow:0 4px 16px rgba(6,182,212,0.25);">
+</header>
+
+
+
+
+    <div class="grid">
+      <div class="card">
+        <div style="display:flex;gap:12px;align-items:center;justify-content:space-between">
+          <strong>Tabla de distribución</strong>
+          <div style="font-size:13px;color:var(--muted)">Editar rangos como "10-15"</div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:12px">
+          <table id="distTable">
+            <thead>
+              <tr>
+                <th style="width:1%"></th>
+                <th>Rango de edad</th>
+                <th style="width:140px">Frecuencia</th>
+                <th style="width:120px">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <!-- filas dinámicas -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="controls">
+          <button class="btn" id="addRowBtn">+ Agregar fila</button>
+          <button class="btn ghost" id="sampleBtn">Cargar ejemplo</button>
+          <button class="btn" id="calcBtn">Calcular</button>
+          <button class="btn ghost" id="clearBtn">Limpiar</button>
+        </div>
+
+        <footer style="margin-top:14px">
+          <div>Formato: "min-max" (ej. 10-15). Soporta decimales.</div>
+          <div id="msg" class="muted"></div>
+        </footer>
+      </div>
+
+      <div class="card">
+        <strong>Resultados</strong>
+
+        <div class="results" style="margin-top:12px">
+          <div class="stat">
+            <small>Media (estimada)</small>
+            <strong id="media">—</strong>
+          </div>
+          <div class="stat">
+            <small>Mediana (agrupada)</small>
+            <strong id="mediana">—</strong>
+          </div>
+          <div class="stat">
+            <small>Moda (agrupada)</small>
+            <strong id="moda">—</strong>
+          </div>
+          <div class="stat">
+            <small>Rango</small>
+            <strong id="rango">—</strong>
+          </div>
+          <div class="stat">
+            <small>Desviación media</small>
+            <strong id="desv_media">—</strong>
+          </div>
+          <div class="stat">
+            <small>Desviación típica (σ)</small>
+            <strong id="desv_tipica">—</strong>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap">
+          <button class="btn ghost" id="chartBarBtn" style="font-size:12px;padding:6px 12px">📊 Barras</button>
+          <button class="btn ghost" id="chartPieBtn" style="font-size:12px;padding:6px 12px">🥧 Pastel</button>
+          <button class="btn ghost" id="chartLineBtn" style="font-size:12px;padding:6px 12px">📈 Línea</button>
+          <button class="btn ghost" id="exportPdfBtn" style="font-size:12px;padding:6px 12px">📄 PDF</button>
+          <button class="btn ghost" id="exportCsvBtn" style="font-size:12px;padding:6px 12px">📋 CSV</button>
+        </div>
+
+        <div class="chart-wrap">
+          <canvas id="freqChart" height="220"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pie de página con créditos -->
+  <footer style="margin-top:40px;padding:20px;text-align:center;border-top:1px solid rgba(255,255,255,0.05);color:var(--muted);font-size:12px">
+    <div style="margin-bottom:8px">
+      <strong>Desarrollado por:</strong><br>
+      Henrry Daniel Cañas Teus<br>
+      Daysi Naomy Orellana Flores
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.03)">
+      <strong>Grupo DSW21</strong><br>
+      Carrera: Técnico en Ingeniería de Desarrollo de Software
+    </div>
+  </footer>
+
+  <script>
+    // utilidades
+    function el(tag, props = {}) {
+      const e = document.createElement(tag);
+      Object.assign(e, props);
+      return e;
+    }
+
+    const tbody = document.getElementById('tbody');
+    const addRowBtn = document.getElementById('addRowBtn');
+    const calcBtn = document.getElementById('calcBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const sampleBtn = document.getElementById('sampleBtn');
+    const msg = document.getElementById('msg');
+
+    const chartBarBtn = document.getElementById('chartBarBtn');
+    const chartPieBtn = document.getElementById('chartPieBtn');
+    const chartLineBtn = document.getElementById('chartLineBtn');
+    const exportPdfBtn = document.getElementById('exportPdfBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+
+    // inicial chart
+    let chart = null;
+    let currentChartType = 'bar';
+    let lastResults = null;
+
+    // Paleta de colores
+    const colors = [
+      '#06B6D4', '#0EA5E9', '#3B82F6', '#8B5CF6', '#EC4899',
+      '#F43F5E', '#F97316', '#EAB308', '#84CC16', '#22C55E',
+      '#10B981', '#14B8A6', '#0891B2', '#0369A1', '#1e40af',
+      '#7c3aed', '#a855f7', '#d946ef', '#ec4899', '#f43f5e',
+      '#f97316', '#ca8a04', '#84cc16', '#15803d', '#059669'
+    ];
+
+    function createChart(labels, data, chartType = 'bar'){
+      const ctx = document.getElementById('freqChart').getContext('2d');
+      if(chart) chart.destroy();
+      
+      currentChartType = chartType;
+
+      const config = {
+        type: chartType,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Frecuencia',
+            data: data,
+            borderRadius: 8,
+            barThickness: 'flex',
+            backgroundColor: chartType === 'pie' ? colors : '#06B6D4',
+            borderColor: chartType === 'pie' ? '#fff' : '#06B6D4',
+            borderWidth: chartType === 'pie' ? 2 : 1
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: chartType === 'pie' ? {} : {
+            x: { ticks: { color: '#cfe8f1' }, grid: { display: false }},
+            y: { ticks: { color: '#cfe8f1' }, grid: { color: 'rgba(255,255,255,0.03)' }}
+          },
+          plugins: {
+            legend: { 
+              display: chartType === 'pie',
+              labels: { color: '#cfe8f1' }
+            }
+          }
+        }
+      };
+
+      chart = new Chart(ctx, config);
+    }
+
+    chartBarBtn.onclick = () => {
+      if(chart) createChart(chart.data.labels, chart.data.datasets[0].data, 'bar');
+    };
+
+    chartPieBtn.onclick = () => {
+      if(chart) createChart(chart.data.labels, chart.data.datasets[0].data, 'doughnut');
+    };
+
+    chartLineBtn.onclick = () => {
+      if(chart) createChart(chart.data.labels, chart.data.datasets[0].data, 'line');
+    };
+
+    // agregar fila
+    function addRow(range = '', freq = '') {
+      const tr = el('tr');
+      const idxTd = el('td', { innerHTML: tbody.children.length + 1 });
+      const rangeTd = el('td');
+      const inputRange = el('input', { className:'range-input', value: range, placeholder:'ej. 10-15' });
+      rangeTd.appendChild(inputRange);
+
+      const freqTd = el('td');
+      const inputFreq = el('input', { className:'freq-input', value: freq, type:'number', min:'0', step:'any' });
+      freqTd.appendChild(inputFreq);
+
+      const actionsTd = el('td');
+      const ra = el('div', { className:'row-actions' });
+      const del = el('div', { className:'ico', innerHTML:'🗑' });
+      del.title = 'Eliminar fila';
+      del.onclick = () => { tr.remove(); refreshIndices(); };
+      ra.appendChild(del);
+      actionsTd.appendChild(ra);
+
+      tr.appendChild(idxTd);
+      tr.appendChild(rangeTd);
+      tr.appendChild(freqTd);
+      tr.appendChild(actionsTd);
+      tbody.appendChild(tr);
+    }
+
+    function refreshIndices(){
+      Array.from(tbody.children).forEach((tr,i) => {
+        tr.children[0].innerText = i+1;
+      });
+    }
+
+    addRowBtn.onclick = () => addRow();
+
+    sampleBtn.onclick = () => {
+      tbody.innerHTML = '';
+      addRow('10-15', 5);
+      addRow('16-20', 8);
+      addRow('21-25', 12);
+      addRow('26-30', 6);
+      addRow('31-35', 4);
+      msg.innerText = 'Ejemplo cargado';
+      setTimeout(()=> msg.innerText = '', 2200);
+    };
+
+    clearBtn.onclick = () => {
+      tbody.innerHTML = '';
+      createChart([], []);
+      document.getElementById('media').innerText = '—';
+      document.getElementById('mediana').innerText = '—';
+      document.getElementById('moda').innerText = '—';
+      document.getElementById('rango').innerText = '—';
+      document.getElementById('desv_media').innerText = '—';
+      document.getElementById('desv_tipica').innerText = '—';
+      msg.innerText = '';
+      lastResults = null;
+    };
+
+    function parseRange(str){
+      if(!str) return null;
+      str = str.replace(/–/g,'-').replace(/\s/g,'');
+      const parts = str.split('-');
+      if(parts.length !== 2) return null;
+      const a = parseFloat(parts[0]);
+      const b = parseFloat(parts[1]);
+      if(Number.isFinite(a) && Number.isFinite(b) && b > a) return {min:a, max:b};
+      return null;
+    }
+
+    function readTable(){
+      const rows = Array.from(tbody.children);
+      const classes = [];
+      const freqs = [];
+      for(const tr of rows){
+        const rangeVal = tr.children[1].querySelector('input').value.trim();
+        const freqVal = tr.children[2].querySelector('input').value.trim();
+        const parsed = parseRange(rangeVal);
+        const f = parseFloat(freqVal);
+        if(!parsed || !Number.isFinite(f) || f < 0) {
+          return { error: 'Revisa rangos o frecuencias. Rangos deben ser formato "min-max" y frecuencias números >= 0.' };
+        }
+        const mid = (parsed.min + parsed.max)/2;
+        classes.push({min:parsed.min, max:parsed.max, mid: mid, h: parsed.max - parsed.min});
+        freqs.push(f);
+      }
+      if(classes.length === 0) return { error: 'La tabla está vacía.' };
+      return { classes, freqs };
+    }
+
+    function calculate(){
+      const data = readTable();
+      if(data.error){
+        msg.innerText = data.error;
+        return null;
+      }
+      msg.innerText = '';
+
+      const classes = data.classes;
+      const freqs = data.freqs.map(x => Number(x));
+      const N = freqs.reduce((a,b)=>a+b,0);
+
+      const products = classes.map((c,i)=> c.mid * freqs[i]);
+      const sumProd = products.reduce((a,b)=>a+b,0);
+      const mean = sumProd / N;
+
+      const minGlobal = Math.min(...classes.map(c=>c.min));
+      const maxGlobal = Math.max(...classes.map(c=>c.max));
+      const rango = maxGlobal - minGlobal;
+
+      const varSum = classes.reduce((acc,c,i)=> acc + freqs[i] * Math.pow(c.mid - mean,2), 0);
+      const variance = N === 0 ? 0 : varSum / N;
+      const std = Math.sqrt(variance);
+
+      const devMedia = classes.reduce((acc,c,i)=> acc + freqs[i] * Math.abs(c.mid - mean), 0) / N;
+
+      const cum = [];
+      freqs.reduce((acc,f,i)=>{
+        const s = acc + f; cum.push(s); return s;
+      },0);
+
+      let median = null;
+      if(N === 0) median = NaN;
+      else {
+        const half = N / 2;
+        let idx = cum.findIndex(cumv => cumv >= half);
+        if(idx === -1) idx = cum.length - 1;
+        const cfb = idx === 0 ? 0 : cum[idx-1];
+        const fm = freqs[idx];
+        const L = classes[idx].min;
+        const h = classes[idx].h;
+        if(fm === 0) median = classes[idx].mid;
+        else median = L + ((half - cfb) / fm) * h;
+      }
+
+      let modaVal = null;
+      const maxFreq = Math.max(...freqs);
+      const modalIndex = freqs.indexOf(maxFreq);
+      const fm = freqs[modalIndex];
+      const f1 = modalIndex > 0 ? freqs[modalIndex-1] : 0;
+      const f2 = modalIndex < freqs.length-1 ? freqs[modalIndex+1] : 0;
+      const h_modal = classes[modalIndex].h;
+      const denom = (2*fm - f1 - f2);
+      if(fm > 0 && denom !== 0){
+        modaVal = classes[modalIndex].min + ((fm - f1)/denom) * h_modal;
+      } else {
+        modaVal = classes[modalIndex].mid;
+      }
+
+      const labels = classes.map(c => `${c.min}–${c.max}`);
+      return {
+        N, mean, median, modaVal, rango, std, devMedia, labels, freqs, classes
+      };
+    }
+
+    function formatNumber(x){
+      if(!Number.isFinite(x)) return '—';
+      return Math.abs(x - Math.round(x)) < 1e-9 ? String(Math.round(x)) : Number(x).toFixed(3);
+    }
+
+    calcBtn.onclick = () => {
+      const res = calculate();
+      if(!res) return;
+      lastResults = res;
+      document.getElementById('media').innerText = formatNumber(res.mean);
+      document.getElementById('mediana').innerText = formatNumber(res.median);
+      document.getElementById('moda').innerText = formatNumber(res.modaVal);
+      document.getElementById('rango').innerText = formatNumber(res.rango);
+      document.getElementById('desv_media').innerText = formatNumber(res.devMedia);
+      document.getElementById('desv_tipica').innerText = formatNumber(res.std);
+
+      createChart(res.labels, res.freqs, 'bar');
+    };
+
+    exportCsvBtn.onclick = () => {
+      if(!lastResults) {
+        alert('Primero debes calcular los datos');
+        return;
+      }
+
+      let csv = 'SISTEMA ESTADÍSTICO - EXPORTACIÓN\n';
+      csv += new Date().toLocaleString('es-ES') + '\n';
+      csv += '================================================================================\n\n';
+      
+      csv += 'TABLA DE DISTRIBUCIÓN\n';
+      csv += '--------------------------------------------------------------------------------\n';
+      csv += 'Rango de Edad,Frecuencia,Marca de Clase\n';
+      csv += '--------------------------------------------------------------------------------\n';
+      
+      let totalFrequencia = 0;
+      lastResults.classes.forEach((c, i) => {
+        const freq = lastResults.freqs[i];
+        totalFrequencia += freq;
+        csv += `${c.min}-${c.max},${freq},${c.mid}\n`;
+      });
+      
+      csv += '--------------------------------------------------------------------------------\n';
+      csv += `TOTAL,${totalFrequencia},\n`;
+      csv += '\n\n';
+
+      csv += 'RESULTADOS ESTADÍSTICOS\n';
+      csv += '================================================================================\n';
+      csv += 'Medida,Valor\n';
+      csv += '--------------------------------------------------------------------------------\n';
+      csv += `Media (estimada),${formatNumber(lastResults.mean)}\n`;
+      csv += `Mediana (agrupada),${formatNumber(lastResults.median)}\n`;
+      csv += `Moda (agrupada),${formatNumber(lastResults.modaVal)}\n`;
+      csv += `Rango,${formatNumber(lastResults.rango)}\n`;
+      csv += `Desviación media,${formatNumber(lastResults.devMedia)}\n`;
+      csv += `Desviación típica (σ),${formatNumber(lastResults.std)}\n`;
+      csv += '--------------------------------------------------------------------------------\n';
+      csv += `Total de datos (N),${lastResults.N}\n`;
+      csv += '================================================================================\n\n';
+      csv += 'Desarrollado por:\n';
+      csv += 'Henrry Daniel Cañas Teus\n';
+      csv += 'Daysi Naomy Orellana Flores\n';
+      csv += 'Grupo DSW21\n';
+      csv += 'Carrera: Técnico en Ingeniería de Desarrollo de Software\n';
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = el('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `estadistica_${new Date().getTime()}.csv`;
+      link.click();
+    };
+
+    exportPdfBtn.onclick = () => {
+      if(!lastResults) {
+        alert('Primero debes calcular los datos');
+        return;
+      }
+
+      const element = el('div');
+      element.style.padding = '20px';
+      element.style.fontFamily = 'Arial, sans-serif';
+      element.style.fontSize = '12px';
+      element.style.backgroundColor = '#fff';
+      element.style.color = '#000';
+
+      let html = `
+        <h1 style="text-align:center;color:#06B6D4">SISTEMA ESTADÍSTICO</h1>
+        <p style="text-align:center;color:#666">${new Date().toLocaleString('es-ES')}</p>
+        
+        <h2 style="color:#06B6D4;border-bottom:2px solid #06B6D4;padding-bottom:10px">Tabla de Distribución</h2>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+          <thead>
+            <tr style="background-color:#06B6D4;color:white">
+              <th style="border:1px solid #ddd;padding:8px">Rango</th>
+              <th style="border:1px solid #ddd;padding:8px">Frecuencia</th>
+              <th style="border:1px solid #ddd;padding:8px">Marca de clase</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      let totalPDF = 0;
+      lastResults.classes.forEach((c, i) => {
+        totalPDF += lastResults.freqs[i];
+        html += `
+          <tr>
+            <td style="border:1px solid #ddd;padding:8px">${c.min} - ${c.max}</td>
+            <td style="border:1px solid #ddd;padding:8px;text-align:center">${lastResults.freqs[i]}</td>
+            <td style="border:1px solid #ddd;padding:8px;text-align:center">${c.mid}</td>
+          </tr>
+        `;
+      });
+
+      html += `
+            <tr style="background-color:#e0f2fe">
+              <td style="border:1px solid #ddd;padding:8px;font-weight:bold">TOTAL</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:center;font-weight:bold">${totalPDF}</td>
+              <td style="border:1px solid #ddd;padding:8px"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 style="color:#06B6D4;border-bottom:2px solid #06B6D4;padding-bottom:10px">Resultados Estadísticos</h2>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
+          <thead>
+            <tr style="background-color:#06B6D4;color:white">
+              <th style="border:1px solid #ddd;padding:8px;text-align:left">Medida</th>
+              <th style="border:1px solid #ddd;padding:8px;text-align:right">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="border:1px solid #ddd;padding:8px">Media (estimada)</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${formatNumber(lastResults.mean)}</td>
+            </tr>
+            <tr style="background-color:#f0f9ff">
+              <td style="border:1px solid #ddd;padding:8px">Mediana (agrupada)</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${formatNumber(lastResults.median)}</td>
+            </tr>
+            <tr>
+              <td style="border:1px solid #ddd;padding:8px">Moda (agrupada)</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${formatNumber(lastResults.modaVal)}</td>
+            </tr>
+            <tr style="background-color:#f0f9ff">
+              <td style="border:1px solid #ddd;padding:8px">Rango</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${formatNumber(lastResults.rango)}</td>
+            </tr>
+            <tr>
+              <td style="border:1px solid #ddd;padding:8px">Desviación media</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${formatNumber(lastResults.devMedia)}</td>
+            </tr>
+            <tr style="background-color:#f0f9ff">
+              <td style="border:1px solid #ddd;padding:8px">Desviación típica (σ)</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${formatNumber(lastResults.std)}</td>
+            </tr>
+            <tr style="background-color:#e0f2fe;font-weight:bold">
+              <td style="border:1px solid #ddd;padding:8px">Total de datos (N)</td>
+              <td style="border:1px solid #ddd;padding:8px;text-align:right">${lastResults.N}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div style="margin-top:30px;padding-top:20px;border-top:2px solid #ddd;text-align:center;color:#666;font-size:11px">
+          <p style="margin:5px 0"><strong>Desarrollado por:</strong></p>
+          <p style="margin:3px 0">Henrry Daniel Cañas Teus</p>
+          <p style="margin:3px 0">Daysi Naomy Orellana Flores</p>
+          <p style="margin:10px 0;border-top:1px solid #ddd;padding-top:10px">
+            <strong>Grupo DSW21</strong><br>
+            Carrera: Técnico en Ingeniería de Desarrollo de Software
+          </p>
+        </div>
+      `;
+
+      element.innerHTML = html;
+
+      const opt = {
+        margin: 10,
+        filename: `estadistica_${new Date().getTime()}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+      };
+
+      html2pdf().set(opt).from(element).save();
+    };
+
+    (function init(){
+      tbody.innerHTML = '';
+      addRow('10-15', 5);
+      addRow('16-20', 8);
+      addRow('21-25', 12);
+    })();
+
+    document.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' && e.ctrlKey) addRow();
+    });
+  </script>
+</body>
+</html>
